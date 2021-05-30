@@ -1,9 +1,10 @@
 import random
+import pysynth
 import numpy as np
-import scipy.io.wavfile as wf
 
-PITCH_CLASS_MAP = {1: "C4", 2: "C#4", 3: "D4", 4: "D#4", 5: "E4", 6: "F4", 7: "F#4", 8: "G4", 9: "G#4", 10: "A4",
-                   11: "A#4", 12: "B4", 13: "C5", 14: "C#5", 15: "D5", 16: "D#5", 17: "E5"}
+PITCH_CLASS_MAP = {1: "c4", 2: "c#4", 3: "c4", 4: "c#4", 5: "e4", 6: "f4", 7: "f#4", 8: "g4", 9: "g#4", 10: "a4",
+                   11: "a#4", 12: "b4", 13: "c5", 14: "c#5", 15: "d5", 16: "d#5", 17: "e5"}
+DURATION_MAP = {1: 4, 2: 2, 3: -2, 4: 1}
 PITCH_RANGE = 17
 
 FREQ_TABLE = {
@@ -54,22 +55,13 @@ class Generator:
         return generated_tones
 
     def play(self, tone_ids, output_path, sample_rate=44100):
-        tones = [self.id_to_unit[idx] for idx in tone_ids]
-        tones = [(tone, duration) for tone, duration in tones]
-
-        music = np.empty(shape=1)
-
-        # 合成波形文件数据
-        for tone, duration in tones:
-            tone = PITCH_CLASS_MAP[tone]
-            times = np.linspace(0, duration, int(duration * sample_rate))
-            sound = np.sin(2 * np.pi * FREQ_TABLE[tone] * times)
-            music = np.append(music, sound)
-        music *= 2 ** 15
-        music = music.astype(np.int16)
-
-        # 写入波形文件
-        wf.write(output_path, sample_rate, music)
+        _tones = [self.id_to_unit[idx] for idx in tone_ids]
+        tones = list([])
+        for tone, duration in _tones:
+            while duration > 0:
+                tones.append((PITCH_CLASS_MAP[tone], DURATION_MAP[(duration-1) % 4 + 1]))
+                duration -= 4
+        pysynth.make_wav(tones, fn=output_path)
         return tones
 
     def generate_and_play(self, length, output_path, sample_rate=44100):

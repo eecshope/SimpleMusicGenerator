@@ -1,26 +1,15 @@
-import csv
-import numpy as np
-import json
-
+import _pickle as pkl
 from generator import Generator
 
 
 def main():
-    # read the markov matrix
-    with open("data/sample.csv", "r") as file:
-        reader = csv.reader(file, delimiter="\t")
-        markov = [line for line in reader]
-    header = markov[0]
-    markov = np.asarray(markov[1:]).astype(np.float32)
 
-    # build the init parameters
-    pitch_vocab = dict({})
-    for idx, pitch in enumerate(header):
-        pitch_vocab[idx] = pitch
-    with open("12.json", "r") as file:
-        freq_table = json.load(file)
+    with open("data/order=1.pkl", "rb") as file:
+        obj = pkl.load(file)
+        id_to_unit = obj["id_to_unit"]
+        markov = obj["markov"]
 
-    music_generator = Generator(pitch_vocab, markov, freq_table, 0.001)
+    music_generator = Generator(id_to_unit, markov, 0.00000001)
     music = music_generator.generate_and_play(20, "test.wav")
     print(music)
 
