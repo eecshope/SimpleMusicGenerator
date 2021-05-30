@@ -1,4 +1,4 @@
 # SimpleMusicGenerator
 
 Required package:
-- PySynth `pip install Pysynth`
+- PySynth `git clone git@github.com:mdoege/PySynth.git` `python setup.py install`
