@@ -17,7 +17,7 @@ def main():
     pitch_vocab = dict({})
     for idx, pitch in enumerate(header):
         pitch_vocab[idx] = pitch
-    with open("data/12.json", "r") as file:
+    with open("12.json", "r") as file:
         freq_table = json.load(file)
 
     music_generator = Generator(pitch_vocab, markov, freq_table, 0.001)
