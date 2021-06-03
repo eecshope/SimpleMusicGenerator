@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import _pickle as pkl
 
@@ -34,9 +35,14 @@ def parse(sheet_path, output_path, order):
         markov = np.zeros((n_unit, n_unit), dtype=np.int32)
         for i in range(len(tones) - 1):
             markov[unit_to_id[(tones[i], durations[i])]][unit_to_id[(tones[i+1], durations[i+1])]] += 1
-        row_sum = np.sum(markov, -1, keepdims=True)
-        row_sum[row_sum == 0] = 1
-        markov = np.divide(markov, row_sum)
+
+    elif order == 2:
+        markov = np.zeros((n_unit, n_unit, n_unit), dtype=np.int32)
+        for i in range(len(tones) - 2):
+            n_0 = unit_to_id[(tones[i], durations[i])]
+            n_1 = unit_to_id[(tones[i+1], durations[i+1])]
+            n_2 = unit_to_id[(tones[i+2], durations[i+2])]
+            markov[n_0][n_1][n_2] += 1
 
     with open(output_path, "wb") as file:
         output_dict = {"unit_to_id": unit_to_id,
@@ -46,7 +52,10 @@ def parse(sheet_path, output_path, order):
 
 
 def main():
-    parse("data/data.txt", "data/order=1.pkl", 1)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--order", type=int, default=1)
+    args = parser.parse_args()
+    parse("data/data.txt", f"data/order={args.order}.pkl", args.order)
 
 
 if __name__ == "__main__":

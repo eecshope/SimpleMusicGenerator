@@ -2,8 +2,8 @@ import random
 import pysynth
 import numpy as np
 
-PITCH_CLASS_MAP = {1: "c4", 2: "c#4", 3: "c4", 4: "c#4", 5: "e4", 6: "f4", 7: "f#4", 8: "g4", 9: "g#4", 10: "a4",
-                   11: "a#4", 12: "b4", 13: "c5", 14: "c#5", 15: "d5", 16: "d#5", 17: "e5"}
+PITCH_CLASS_MAP = {1: "a4", 2: "a#4", 3: "b4", 4: "c5", 5: "c#5", 6: "d5", 7: "d#5", 8: "e5", 9: "f5", 10: "f#5",
+                   11: "g5", 12: "g#5", 13: "a5", 14: "a#5", 15: "b5", 16: "c6", 17: "c#6"}
 DURATION_MAP = {1: 4, 2: 2, 3: -2, 4: 1}
 PITCH_RANGE = 17
 
@@ -30,12 +30,37 @@ FREQ_TABLE = {
 
 
 class Generator:
-    def __init__(self, id_to_unit, markov_matrix, unit_time=0.1):
+    def __init__(self, id_to_unit, markov_matrix):
         self.id_to_unit = id_to_unit
         self.unit_list = list(self.id_to_unit.keys())  # need to be aligned
         self.markov_matrix = markov_matrix
         self.n_pitch = len(self.unit_list)
-        self.unit_time = unit_time
+
+    def simple_generate(self, length):
+        pass
+
+    def play(self, tone_ids, output_path, bpm=120):
+        _tones = [self.id_to_unit[idx] for idx in tone_ids]
+        tones = list([])
+        for tone, duration in _tones:
+            while duration > 0:
+                tones.append((PITCH_CLASS_MAP[tone], DURATION_MAP[(duration-1) % 4 + 1]))
+                duration -= 4
+        pysynth.make_wav(tones, fn=output_path, bpm=bpm)
+        return tones
+
+    def generate_and_play(self, length, output_path, bpm=120):
+        tone_ids = self.simple_generate(length)
+        tones = self.play(tone_ids, output_path, bpm)
+        return tones
+
+
+class OrderOneGenerator(Generator):
+    def __init__(self, id_to_unit, markov_matrix):
+        super(OrderOneGenerator, self).__init__(id_to_unit, markov_matrix)
+        row_sum = np.sum(self.markov_matrix, -1, keepdims=True)
+        row_sum[row_sum == 0] = 1
+        self.markov_matrix = np.divide(self.markov_matrix, row_sum)
 
     def simple_generate(self, length):
         try:
@@ -45,7 +70,6 @@ class Generator:
         start_point = random.sample(self.unit_list, 1)[0]
         generated_tones = [start_point]
 
-        # start generate new tones
         for i in range(length - 1):
             last_tone = generated_tones[-1]
             probs = self.markov_matrix[last_tone]
@@ -54,17 +78,35 @@ class Generator:
 
         return generated_tones
 
-    def play(self, tone_ids, output_path, sample_rate=44100):
-        _tones = [self.id_to_unit[idx] for idx in tone_ids]
-        tones = list([])
-        for tone, duration in _tones:
-            while duration > 0:
-                tones.append((PITCH_CLASS_MAP[tone], DURATION_MAP[(duration-1) % 4 + 1]))
-                duration -= 4
-        pysynth.make_wav(tones, fn=output_path)
-        return tones
 
-    def generate_and_play(self, length, output_path, sample_rate=44100):
-        tone_ids = self.simple_generate(length)
-        tones = self.play(tone_ids, output_path, sample_rate)
-        return tones
+class OrderTwoGenerator(Generator):
+    def __init__(self, id_to_unit, markov_matrix):
+        super(OrderTwoGenerator, self).__init__(id_to_unit, markov_matrix)
+        order_1_matrix = self.markov_matrix.sum(axis=-1)
+        row_sum = np.sum(order_1_matrix, -1, keepdims=True)
+        row_sum[row_sum == 0] = 1
+        self.order_one_matrix = np.divide(order_1_matrix, row_sum)
+
+        row_sum = np.sum(self.markov_matrix, -1, keepdims=True)
+        row_sum[row_sum == 0] = 1
+        self.markov_matrix = np.divide(self.markov_matrix, row_sum)
+
+    def simple_generate(self, length):
+        try:
+            assert length > 1
+        except AssertionError:
+            print(f"Generated length should be larger than 1, but given {length}")
+        start_point = random.sample(self.unit_list, 1)[0]
+        generated_tones = [start_point, np.random.choice(a=self.unit_list, size=1, replace=True,
+                                                         p=self.order_one_matrix[start_point])[0]]
+
+        for i in range(length - 2):
+            last_one = generated_tones[-2]
+            last_two = generated_tones[-1]
+            probs = self.markov_matrix[last_one][last_two]
+            if probs.sum().data == 0:
+                probs = self.order_one_matrix[last_two]
+            next_tone = np.random.choice(a=self.unit_list, size=1, replace=True, p=probs)[0]
+            generated_tones.append(next_tone)
+
+        return generated_tones
