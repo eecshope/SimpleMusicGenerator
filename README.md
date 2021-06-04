@@ -15,3 +15,15 @@ Else, if you want a scrap from Order-two Markov Matrix, the order is
 ```shell
 python main.py --order=2
 ```
+
+If you want to do beam search, just use 
+```shell
+python main.py --order=[your order] --beam_search
+```
+
+As for other options, use the following order to understand them
+```shell
+python main.py -h
+```
+
+For statistic analysis, just review the generated json files.

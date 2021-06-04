@@ -1,9 +1,14 @@
 import random
 import pysynth
+import os
+import json
 import numpy as np
 
+from typing import List
+
 PITCH_CLASS_MAP = {1: "a4", 2: "a#4", 3: "b4", 4: "c5", 5: "c#5", 6: "d5", 7: "d#5", 8: "e5", 9: "f5", 10: "f#5",
-                   11: "g5", 12: "g#5", 13: "a5", 14: "a#5", 15: "b5", 16: "c6", 17: "c#6"}
+                   11: "g5", 12: "g#5", 13: "a5", 14: "a#5", 15: "b5", 16: "c6", 17: "c#6", 18: "d6", 19: "d#6",
+                   20: "e6"}
 DURATION_MAP = {1: 4, 2: 2, 3: -2, 4: 1}
 PITCH_RANGE = 17
 
@@ -36,16 +41,90 @@ class Generator:
         self.markov_matrix = markov_matrix
         self.n_pitch = len(self.unit_list)
 
-    def simple_generate(self, length):
+    def _init_tones(self) -> List:
         pass
 
-    def play(self, tone_ids, output_path, bpm=120):
+    def _generate_new_prob(self, generated) -> np.array:
+        pass
+
+    def simple_generate(self, length):
+        try:
+            assert length > 0
+        except AssertionError:
+            print(f"Generated length should be larger than 0, but given {length}")
+
+        generated_tones = self._init_tones()
+        while len(generated_tones) < length:
+            probs = self._generate_new_prob(generated_tones)
+            next_token = np.random.choice(a=self.unit_list, size=1, replace=True, p=probs)[0]
+            generated_tones.append(next_token)
+        return generated_tones
+
+    def _beam_search(self, length, beam_size):
+        try:
+            assert length > 0
+        except AssertionError:
+            print(f"Generated length should be larger than 0, but given {length}")
+
+        generated_tones = self._init_tones()
+        probs = self._generate_new_prob(generated_tones)
+        probs: np.array
+        non_zero = (probs != 0).sum()
+
+        cmb = sorted([(u, p) for u, p in zip(self.unit_list, probs)], key=lambda x: x[1], reverse=True)
+        next_tokens = [u[0] for u in cmb[:min(len(cmb), non_zero)]]
+
+        beam_probs = np.log(probs[next_tokens])
+        beams = list([])
+        for next_token in next_tokens:
+            beams.append(generated_tones + [next_token])
+
+        while len(beams[0]) < length:
+            new_beams = list([])
+            new_beam_probs = list([])
+            for beam, beam_prob in zip(beams, beam_probs):
+                probs = self._generate_new_prob(beam)
+                probs: np.array
+                non_zero = (probs != 0).sum()
+
+                cmb = sorted([(u, p) for u, p in zip(self.unit_list, probs)], key=lambda x: x[1], reverse=True)
+                next_tokens = [u[0] for u in cmb[:min(len(cmb), non_zero)]]
+
+                _beam_probs = np.log(probs[next_tokens]) + beam_prob
+                _beams = list([])
+                for next_token in next_tokens:
+                    _beams.append(beam + [next_token])
+
+                new_beams += _beams
+                new_beam_probs += _beam_probs.tolist()
+
+            cmb = [(b, p) for b, p in zip(new_beams, new_beam_probs)]
+            cmb = sorted(cmb, key=lambda x: x[1], reverse=True)[:min(beam_size, len(cmb))]
+            beams = [b[0] for b in cmb]
+            beam_probs = [b[1] for b in cmb]
+
+        return beams, beam_probs
+
+    def beam_search(self, length, beam_size, bpm, music_dir, tone_dir):
+        beams, beam_probs = self._beam_search(length=length, beam_size=beam_size)
+        ptr = 0
+        for beam, p in zip(beams, beam_probs):
+            tones = self.play(beam, os.path.join(music_dir, f"{ptr}.wav"), bpm)
+            with open(os.path.join(tone_dir, f"{ptr}.json"), "w") as file:
+                json.dump({"tones": tones, "prob": p}, file)
+            ptr += 1
+
+    def id_to_tone(self, tone_ids):
         _tones = [self.id_to_unit[idx] for idx in tone_ids]
         tones = list([])
         for tone, duration in _tones:
             while duration > 0:
-                tones.append((PITCH_CLASS_MAP[tone], DURATION_MAP[(duration-1) % 4 + 1]))
+                tones.append((PITCH_CLASS_MAP[tone], DURATION_MAP[(duration - 1) % 4 + 1]))
                 duration -= 4
+        return tones
+
+    def play(self, tone_ids, output_path, bpm=120):
+        tones = self.id_to_tone(tone_ids)
         pysynth.make_wav(tones, fn=output_path, bpm=bpm)
         return tones
 
@@ -62,21 +141,13 @@ class OrderOneGenerator(Generator):
         row_sum[row_sum == 0] = 1
         self.markov_matrix = np.divide(self.markov_matrix, row_sum)
 
-    def simple_generate(self, length):
-        try:
-            assert length > 0
-        except AssertionError:
-            print(f"Generated length should be larger than 0, but given {length}")
+    def _init_tones(self):
         start_point = random.sample(self.unit_list, 1)[0]
-        generated_tones = [start_point]
+        return [start_point]
 
-        for i in range(length - 1):
-            last_tone = generated_tones[-1]
-            probs = self.markov_matrix[last_tone]
-            next_tone = np.random.choice(a=self.unit_list, size=1, replace=True, p=probs)[0]
-            generated_tones.append(next_tone)
-
-        return generated_tones
+    def _generate_new_prob(self, generated_tones):
+        last_tone = generated_tones[-1]
+        return self.markov_matrix[last_tone]
 
 
 class OrderTwoGenerator(Generator):
@@ -91,22 +162,16 @@ class OrderTwoGenerator(Generator):
         row_sum[row_sum == 0] = 1
         self.markov_matrix = np.divide(self.markov_matrix, row_sum)
 
-    def simple_generate(self, length):
-        try:
-            assert length > 1
-        except AssertionError:
-            print(f"Generated length should be larger than 1, but given {length}")
+    def _init_tones(self) -> List:
         start_point = random.sample(self.unit_list, 1)[0]
         generated_tones = [start_point, np.random.choice(a=self.unit_list, size=1, replace=True,
                                                          p=self.order_one_matrix[start_point])[0]]
-
-        for i in range(length - 2):
-            last_one = generated_tones[-2]
-            last_two = generated_tones[-1]
-            probs = self.markov_matrix[last_one][last_two]
-            if probs.sum().data == 0:
-                probs = self.order_one_matrix[last_two]
-            next_tone = np.random.choice(a=self.unit_list, size=1, replace=True, p=probs)[0]
-            generated_tones.append(next_tone)
-
         return generated_tones
+
+    def _generate_new_prob(self, generated_tones):
+        last_one = generated_tones[-2]
+        last_two = generated_tones[-1]
+        probs = self.markov_matrix[last_one][last_two]
+        if probs.sum().data == 0:
+            probs = self.order_one_matrix[last_two]
+        return probs
