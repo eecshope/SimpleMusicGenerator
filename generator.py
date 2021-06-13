@@ -35,11 +35,12 @@ FREQ_TABLE = {
 
 
 class Generator:
-    def __init__(self, id_to_unit, markov_matrix):
+    def __init__(self, id_to_unit, markov_matrix, rw_prob):
         self.id_to_unit = id_to_unit
         self.unit_list = list(self.id_to_unit.keys())  # need to be aligned
         self.markov_matrix = markov_matrix
         self.n_pitch = len(self.unit_list)
+        self.rw_prob = rw_prob
 
     def _init_tones(self) -> List:
         pass
@@ -55,7 +56,12 @@ class Generator:
 
         generated_tones = self._init_tones()
         while len(generated_tones) < length:
+            seed = np.random.random()
             probs = self._generate_new_prob(generated_tones)
+
+            if seed < self.rw_prob or np.sum(probs) != 1:
+                probs = np.ones([len(self.unit_list)], dtype=np.float32) / len(self.unit_list)
+
             next_token = np.random.choice(a=self.unit_list, size=1, replace=True, p=probs)[0]
             generated_tones.append(next_token)
         return generated_tones
@@ -83,8 +89,14 @@ class Generator:
             new_beams = list([])
             new_beam_probs = list([])
             for beam, beam_prob in zip(beams, beam_probs):
-                probs = self._generate_new_prob(beam)
-                probs: np.array
+                seed = np.random.random()
+                if seed >= self.rw_prob:
+                    probs = self._generate_new_prob(beam)
+                    probs: np.array
+                else:
+                    probs = np.ones([len(self.unit_list)], dtype=np.float32) / len(self.unit_list)
+                    probs: np.array
+
                 non_zero = (probs != 0).sum()
 
                 cmb = sorted([(u, p) for u, p in zip(self.unit_list, probs)], key=lambda x: x[1], reverse=True)
@@ -125,6 +137,7 @@ class Generator:
 
     def play(self, tone_ids, output_path, bpm=120):
         tones = self.id_to_tone(tone_ids)
+        print(tones)
         pysynth.make_wav(tones, fn=output_path, bpm=bpm)
         return tones
 
@@ -135,8 +148,8 @@ class Generator:
 
 
 class OrderOneGenerator(Generator):
-    def __init__(self, id_to_unit, markov_matrix):
-        super(OrderOneGenerator, self).__init__(id_to_unit, markov_matrix)
+    def __init__(self, id_to_unit, markov_matrix, rw_prob):
+        super(OrderOneGenerator, self).__init__(id_to_unit, markov_matrix, rw_prob)
         row_sum = np.sum(self.markov_matrix, -1, keepdims=True)
         row_sum[row_sum == 0] = 1
         self.markov_matrix = np.divide(self.markov_matrix, row_sum)
@@ -151,8 +164,8 @@ class OrderOneGenerator(Generator):
 
 
 class OrderTwoGenerator(Generator):
-    def __init__(self, id_to_unit, markov_matrix):
-        super(OrderTwoGenerator, self).__init__(id_to_unit, markov_matrix)
+    def __init__(self, id_to_unit, markov_matrix, rw_prob):
+        super(OrderTwoGenerator, self).__init__(id_to_unit, markov_matrix, rw_prob)
         order_1_matrix = self.markov_matrix.sum(axis=-1)
         row_sum = np.sum(order_1_matrix, -1, keepdims=True)
         row_sum[row_sum == 0] = 1

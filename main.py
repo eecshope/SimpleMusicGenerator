@@ -17,6 +17,8 @@ def main():
     parser.add_argument("--tone_output_dir", default="output/tone", help="dir of beam search tone")
     parser.add_argument("--beam_search", action="store_true", help="whether to use beam search")
     parser.add_argument("--beam_size", type=int, default=10, help="beam size")
+    parser.add_argument("--random_walk", action="store_true", help="whether to use random walk")
+    parser.add_argument("--random_walk_prob", type=float, default=0.1, help="prob for random walk")
     args = parser.parse_args()
 
     with open(f"data/order={args.order}.pkl", "rb") as file:
@@ -25,9 +27,9 @@ def main():
         markov = obj["markov"]
 
     if args.order == 1:
-        music_generator = OrderOneGenerator(id_to_unit, markov)
+        music_generator = OrderOneGenerator(id_to_unit, markov, args.random_walk_prob if args.random_walk else 0)
     else:
-        music_generator = OrderTwoGenerator(id_to_unit, markov)
+        music_generator = OrderTwoGenerator(id_to_unit, markov, args.random_walk_prob if args.random_walk else 0)
 
     if args.beam_search:
         args.music_output_dir += f"order={args.order}"
@@ -46,7 +48,8 @@ def main():
             output_path = f"id={i}_" + args.music_output_path
             try:
                 music.append(music_generator.generate_and_play(args.n_tokens, output_path, args.bpm))
-            except ValueError:
+            except ValueError as e:
+                print(e)
                 print("music sample has a vital fault")
 
         with open(args.tone_output_path, "w") as file:
