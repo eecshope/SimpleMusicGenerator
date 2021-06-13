@@ -90,10 +90,10 @@ class Generator:
             new_beam_probs = list([])
             for beam, beam_prob in zip(beams, beam_probs):
                 seed = np.random.random()
-                if seed >= self.rw_prob:
-                    probs = self._generate_new_prob(beam)
-                    probs: np.array
-                else:
+                probs = self._generate_new_prob(generated_tones)
+                probs: np.array
+
+                if seed < self.rw_prob or np.sum(probs) != 1:
                     probs = np.ones([len(self.unit_list)], dtype=np.float32) / len(self.unit_list)
                     probs: np.array
 
